@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>HeltarChat Web Widget — demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 720px;
+        margin: 4rem auto;
+        padding: 2rem;
+        line-height: 1.6;
+        color: #1a1a1a;
+      }
+      code {
+        background: #f3f4f6;
+        padding: 2px 5px;
+        border-radius: 4px;
+      }
+      pre {
+        background: #f3f4f6;
+        padding: 12px 16px;
+        border-radius: 6px;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>HeltarChat web widget — demo</h1>
+    <p>
+      This page loads the bundled widget from <code>../dist/web.js</code> and
+      mounts it against a local backend. Adjust <code>businessId</code> +
+      <code>apiHost</code> below to match your env.
+    </p>
+    <p>
+      The floating green bubble in the bottom-right corner is the widget. Click
+      to open. Messages flow to <code>POST /v1/webhooks/web/&lt;bizId&gt;</code>
+      and back through Socket.io.
+    </p>
+
+    <h2>Snippet customers will paste</h2>
+    <pre><code>&lt;script src="https://&lt;YOUR_DASHBOARD_HOST&gt;/web-widget.js" defer&gt;&lt;/script&gt;
+&lt;script&gt;
+  window.addEventListener('DOMContentLoaded', function () {
+    HeltarChat.initBubble({
+      businessId: 123,
+      apiHost: 'https://app.heltar.com',
+      mode: 'system', // 'light' | 'dark' | 'system' — bind to your site theme
+      theme: {
+        primaryColor: '#008069',
+        headerTitle: 'Acme Support',
+        headerSubtitle: 'We typically reply in 5 minutes',
+        welcomeMessage: 'Hi! Ask us anything — a human or our AI agent will reply.',
+      },
+    });
+  });
+
+  // When your site's theme toggles, flip the widget live:
+  HeltarChat.setMode('dark');
+&lt;/script&gt;</code></pre>
+
+    <h2>Live theme — flip the widget like your site would</h2>
+    <p>
+      <button type="button" onclick="HeltarChat.setMode('light')">Light</button>
+      <button type="button" onclick="HeltarChat.setMode('dark')">Dark</button>
+      <button type="button" onclick="HeltarChat.setMode('system')">System</button>
+      &nbsp;|&nbsp;
+      <button type="button" onclick="HeltarChat.setTheme({ primaryColor: '#7c3aed' })">Purple brand</button>
+      <button type="button" onclick="HeltarChat.setTheme({ primaryColor: '#008069' })">Green brand</button>
+    </p>
+
+    <script src="../dist/web.js" defer></script>
+    <script>
+      window.addEventListener('DOMContentLoaded', function () {
+        HeltarChat.initBubble({
+          businessId: 1,
+          apiHost: 'http://localhost:8080',
+          mode: 'system',
+          theme: {
+            primaryColor: '#008069',
+            headerTitle: 'Acme Support',
+            headerSubtitle: 'We typically reply in 5 minutes',
+            welcomeMessage:
+              'Hi! Ask us anything — a human or our AI agent will reply.',
+          },
+        });
+      });
+    </script>
+  </body>
+</html>

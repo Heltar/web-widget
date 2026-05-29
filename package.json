@@ -1,0 +1,23 @@
+{
+  "name": "@heltarchat/web-widget",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Embeddable web chat widget for HeltarChat. Customers paste a single <script> on their site and visitors get an in-page chat that flows into the same inbox, AI agents and chatbots as WhatsApp/RCS. Loaded via script tag — not published to npm.",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.cjs",
+    "dev": "node esbuild.config.cjs --watch",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "esbuild": "^0.25.0",
+    "esbuild-plugin-solid": "^0.6.0",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.7.5",
+    "solid-element": "^1.9.1",
+    "solid-js": "^1.9.9"
+  }
+}
