@@ -165,6 +165,11 @@ export const Bubble = (props: BubbleProps) => {
     return ensureVisitorId(props.businessId, props.visitor?.id);
   });
 
+  // Host-supplied HMAC signature of the identity. Forwarded on every request;
+  // the backend only requires it for non-anonymous ids once the business
+  // enables identity verification (anonymous random ids ignore it).
+  const visitorHash = createMemo(() => props.visitor?.hash);
+
   // Report outbound (business → visitor) messages the visitor can actually see
   // as READ — only when the bubble is open AND the tab is focused, so a closed
   // bubble or a backgrounded tab doesn't falsely mark things read. Skips local
@@ -185,6 +190,7 @@ export const Bubble = (props: BubbleProps) => {
       apiHost: apiHost(),
       businessId: props.businessId,
       visitorId: visitorId(),
+      visitorHash: visitorHash(),
       wamids,
     });
   };
@@ -225,6 +231,7 @@ export const Bubble = (props: BubbleProps) => {
         apiHost: apiHost(),
         businessId: props.businessId,
         visitorId: visitorId(),
+        visitorHash: visitorHash(),
         limit: 50,
       });
       if (mergeOutboundHistory(hist.messages)) markVisibleRead();
@@ -241,6 +248,7 @@ export const Bubble = (props: BubbleProps) => {
         apiHost: apiHost(),
         businessId: props.businessId,
         visitorId: visitorId(),
+        visitorHash: visitorHash(),
         limit: 50,
       });
       setMessages(hist.messages.map(toWidgetMessage));
@@ -270,6 +278,7 @@ export const Bubble = (props: BubbleProps) => {
         apiHost: apiHost(),
         businessId: props.businessId,
         visitorId: visitorId(),
+        visitorHash: visitorHash(),
         // Each time the room is (re)joined, backfill anything missed in the
         // history↔join gap (or while the socket was down).
         onJoined: () => void backfillHistory(),
@@ -403,6 +412,7 @@ export const Bubble = (props: BubbleProps) => {
             apiHost: apiHost(),
             businessId: props.businessId,
             visitorId: visitorId(),
+            visitorHash: visitorHash(),
             limit: 10,
           });
           const cutoff = new Date(afterIso).getTime();
@@ -475,6 +485,7 @@ export const Bubble = (props: BubbleProps) => {
         apiHost: apiHost(),
         businessId: props.businessId,
         visitorId: visitorId(),
+        visitorHash: visitorHash(),
         name: props.visitor?.name,
         // A tapped button / list row goes up as a WhatsApp-style reply
         // (kind + id + title); a typed message goes up as plain text.
@@ -596,12 +607,14 @@ export const Bubble = (props: BubbleProps) => {
         apiHost: apiHost(),
         businessId: props.businessId,
         visitorId: visitorId(),
+        visitorHash: visitorHash(),
         file,
       });
       await sendMessage({
         apiHost: apiHost(),
         businessId: props.businessId,
         visitorId: visitorId(),
+        visitorHash: visitorHash(),
         name: props.visitor?.name,
         // Caption rides with the media (backend stores it as the media caption).
         text: caption || undefined,

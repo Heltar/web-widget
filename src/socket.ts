@@ -6,6 +6,10 @@ interface ConnectArgs {
   apiHost: string;
   businessId: number;
   visitorId: string;
+  /** HMAC signature of visitorId (host-supplied identity verification). Sent
+   *  with the join_web payload; required server-side only for non-anonymous
+   *  ids once the business enables verification. */
+  visitorHash?: string;
   /** Called every time the server emits a message to this visitor's room. */
   onMessage: (msg: WidgetMessage) => void;
   /** Called after the room is successfully (re)joined, so the caller can
@@ -26,6 +30,7 @@ export const connectWidgetSocket = ({
   apiHost,
   businessId,
   visitorId,
+  visitorHash,
   onMessage,
   onJoined,
 }: ConnectArgs): { socket: Socket; dispose: () => void } => {
@@ -54,7 +59,7 @@ export const connectWidgetSocket = ({
     // never joins the room and falls back to history polling forever.
     socket.emit(
       'join_web',
-      { businessId, visitorId },
+      { businessId, visitorId, ...(visitorHash && { visitorHash }) },
       (ack?: { ok: boolean; error?: string }) => {
         // Clear any pending retry on every ack so a late success can't leave a
         // stray re-join queued (rapid reconnects would otherwise pile them up).

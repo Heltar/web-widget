@@ -15,6 +15,11 @@ interface BaseArgs {
 
 interface VisitorArgs extends BaseArgs {
   visitorId: string;
+  /** HMAC signature of `visitorId`, supplied by the host site when identity
+   *  verification is enabled. Sent as the `X-Heltar-Widget-Hash` header (kept
+   *  out of access logs); the backend only requires it for host-supplied
+   *  (non-anonymous) ids. */
+  visitorHash?: string;
 }
 
 interface HistoryArgs extends VisitorArgs {
@@ -26,6 +31,7 @@ export const loadHistory = async ({
   apiHost,
   businessId,
   visitorId,
+  visitorHash,
   beforeTimestamp,
   limit,
 }: HistoryArgs): Promise<HistoryResponse> => {
@@ -35,7 +41,10 @@ export const loadHistory = async ({
   const url =
     `${apiHost}/v1/webhooks/web/${businessId}/${visitorId}/history` +
     (params.toString() ? `?${params}` : '');
-  const res = await fetch(url, { credentials: 'omit' });
+  const res = await fetch(url, {
+    credentials: 'omit',
+    headers: visitorHash ? { 'X-Heltar-Widget-Hash': visitorHash } : undefined,
+  });
   if (!res.ok) {
     throw new Error(`history failed: ${res.status}`);
   }
@@ -62,6 +71,7 @@ export const sendMessage = async ({
   apiHost,
   businessId,
   visitorId,
+  visitorHash,
   text,
   name,
   media,
@@ -74,7 +84,10 @@ export const sendMessage = async ({
   if (reply) body.reply = reply;
   const res = await fetch(`${apiHost}/v1/webhooks/web/${businessId}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(visitorHash && { 'X-Heltar-Widget-Hash': visitorHash }),
+    },
     body: JSON.stringify(body),
     credentials: 'omit',
   });
@@ -94,13 +107,17 @@ export const markRead = async ({
   apiHost,
   businessId,
   visitorId,
+  visitorHash,
   wamids,
 }: MarkReadArgs): Promise<void> => {
   if (wamids.length === 0) return;
   try {
     await fetch(`${apiHost}/v1/webhooks/web/${businessId}/${visitorId}/read`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(visitorHash && { 'X-Heltar-Widget-Hash': visitorHash }),
+      },
       body: JSON.stringify({ wamids }),
       credentials: 'omit',
     });
@@ -117,6 +134,7 @@ export const uploadFile = async ({
   apiHost,
   businessId,
   visitorId,
+  visitorHash,
   file,
 }: UploadArgs): Promise<UploadResponse> => {
   const form = new FormData();
@@ -125,6 +143,9 @@ export const uploadFile = async ({
     `${apiHost}/v1/webhooks/web/${businessId}/${visitorId}/upload`,
     {
       method: 'POST',
+      headers: visitorHash
+        ? { 'X-Heltar-Widget-Hash': visitorHash }
+        : undefined,
       body: form,
       credentials: 'omit',
     },

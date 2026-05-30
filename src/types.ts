@@ -22,8 +22,9 @@ export interface BubbleProps {
    * across the visitor's devices and channels.
    *
    * SECURITY: pass this ONLY for visitors you've authenticated server-
-   * side. Anyone who knows the value can read that visitor's chat. The
-   * widget does NOT verify the id — you do.
+   * side. Anyone who knows the value can read that visitor's chat — unless
+   * you enable identity verification and also pass `hash` (recommended for
+   * predictable ids; see `hash` below).
    *
    * Override is per page-load (not persisted) — if you stop passing it,
    * the visitor falls back to the random id stored in their localStorage.
@@ -36,6 +37,12 @@ export interface BubbleProps {
     id?: string;
     /** Display name shown in the agent inbox. */
     name?: string;
+    /** HMAC-SHA256(id, your widget secret), hex-encoded. REQUIRED when you
+     *  have turned on identity verification in the widget settings. Compute
+     *  it on your SERVER (never expose the secret in the browser) so a
+     *  predictable `id` cannot be guessed/spoofed by another visitor.
+     *  See https://app.heltar.com/docs/integrations/web-widget. */
+    hash?: string;
   };
   /** Optional theme overrides (colours, header text, welcome message). */
   theme?: WidgetTheme;
