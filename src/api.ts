@@ -65,6 +65,9 @@ interface SendArgs extends VisitorArgs {
    *  style reply (kind + id + title) so chatbot flows that branch on the
    *  payload id fire exactly as they do on WhatsApp. */
   reply?: { kind: 'button' | 'list'; id: string; title: string };
+  /** Per-visitor context the embedder set; forwarded so the backend can append
+   *  it to the chatbot's system prompt on this reply. */
+  dynamicPrompt?: string;
 }
 
 export const sendMessage = async ({
@@ -76,12 +79,14 @@ export const sendMessage = async ({
   name,
   media,
   reply,
+  dynamicPrompt,
 }: SendArgs): Promise<void> => {
   const body: Record<string, unknown> = { visitorId };
   if (text) body.text = text;
   if (name) body.name = name;
   if (media) body.media = media;
   if (reply) body.reply = reply;
+  if (dynamicPrompt) body.dynamicPrompt = dynamicPrompt;
   const res = await fetch(`${apiHost}/v1/webhooks/web/${businessId}`, {
     method: 'POST',
     headers: {

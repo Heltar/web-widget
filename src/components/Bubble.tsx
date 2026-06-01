@@ -86,6 +86,11 @@ const toWidgetMessage = (
   status: m.status,
 });
 
+/** Phone breakpoint. MUST mirror the CSS `@media (max-width: 480px)` exactly so
+ *  the JS notion of "mobile / full-screen sheet mode" can never drift from the
+ *  stylesheet — one source of truth for both layout and behaviour. */
+const MOBILE_QUERY = '(max-width: 480px)';
+
 /**
  * The Web Component body — solid-element wraps this in a Shadow DOM root,
  * so the `<style>{styles}</style>` block at the top is scoped to the widget
@@ -113,10 +118,36 @@ export const Bubble = (props: BubbleProps) => {
     if (h) style['--hcw-panel-height'] = h;
     const l = cssSize(t.launcherSize);
     if (l) style['--hcw-launcher-size'] = l;
+    // Positioning: distance from the bottom/side edges + the gap above the
+    // bubble where the panel opens (it always opens above the bubble).
+    const ob = cssSize(t.offsetBottom);
+    if (ob) style['--hcw-offset-bottom'] = ob;
+    const os = cssSize(t.offsetSide);
+    if (os) style['--hcw-offset-side'] = os;
+    const pg = cssSize(t.panelGap);
+    if (pg) style['--hcw-panel-gap'] = pg;
+    // Per-surface colour overrides → the matching --hcw-* token, set inline on
+    // the root only when provided so the palette (incl. dark mode) applies
+    // otherwise. Each token is already consumed by the stylesheet.
+    if (t.headerColor) style['--hcw-header-bg'] = t.headerColor;
+    if (t.headerTextColor) style['--hcw-header-text'] = t.headerTextColor;
+    if (t.footerColor) style['--hcw-composer-bg'] = t.footerColor;
+    if (t.backgroundColor) style['--hcw-chat-bg'] = t.backgroundColor;
+    if (t.incomingColor) style['--hcw-msg-in-bg'] = t.incomingColor;
+    if (t.incomingTextColor) style['--hcw-msg-in-text'] = t.incomingTextColor;
+    if (t.outgoingColor) style['--hcw-msg-out-bg'] = t.outgoingColor;
+    if (t.outgoingTextColor) style['--hcw-msg-out-text'] = t.outgoingTextColor;
     return style;
   });
 
   const [isOpen, setIsOpen] = createSignal<boolean>(false);
+  // True on phone-sized viewports (full-screen sheet mode). Reactive to
+  // rotation/resize so the dialog semantics + soft-keyboard handling follow.
+  const [isMobile, setIsMobile] = createSignal<boolean>(
+    typeof window !== 'undefined' &&
+      !!window.matchMedia &&
+      window.matchMedia(MOBILE_QUERY).matches,
+  );
   const [messages, setMessages] = createSignal<WidgetMessage[]>([]);
   // Header title follows the theme reactively (falls back to 'Chat'), so a
   // live setTheme({ headerTitle }) — including clearing it — is reflected.
@@ -126,6 +157,11 @@ export const Bubble = (props: BubbleProps) => {
   const [sending, setSending] = createSignal<boolean>(false);
   const [uploading, setUploading] = createSignal<boolean>(false);
   const [bootstrapped, setBootstrapped] = createSignal<boolean>(false);
+  // Live-region politeness is held OFF until the initial history snapshot has
+  // painted, then armed — so opening the bubble doesn't make a screen reader
+  // read the entire (up to 50-row) backlog aloud. Real-time replies that
+  // arrive afterwards are still announced.
+  const [liveReady, setLiveReady] = createSignal<boolean>(false);
   /** Set of message IDs whose interactive buttons the visitor has already
    *  clicked on — disables the buttons so a click can't be double-fired. */
   const [respondedTo, setRespondedTo] = createSignal<Set<string>>(new Set());
@@ -141,6 +177,9 @@ export const Bubble = (props: BubbleProps) => {
   } | null>(null);
 
   let messagesEl: HTMLDivElement | undefined;
+  let rootEl: HTMLDivElement | undefined;
+  let panelEl: HTMLDivElement | undefined;
+  let launcherEl: HTMLButtonElement | undefined;
   let inputEl: HTMLTextAreaElement | undefined;
   let fileInputEl: HTMLInputElement | undefined;
   let disposeSocket: (() => void) | undefined;
@@ -274,11 +313,20 @@ export const Bubble = (props: BubbleProps) => {
       // Already-delivered outbound history is now on screen — report it read.
       markVisibleRead();
 
+      // Arm the messages live region only AFTER this history snapshot has
+      // painted, so the backlog isn't announced; later socket/poll replies are.
+      window.requestAnimationFrame(() => setLiveReady(true));
+
       const conn = connectWidgetSocket({
         apiHost: apiHost(),
         businessId: props.businessId,
         visitorId: visitorId(),
         visitorHash: visitorHash(),
+        // Forwarded on join so the backend can use it as the AI greeting opener.
+        dynamicPrompt: props.dynamicPrompt,
+        // Server says the bot is typing (e.g. generating the greeting) — show
+        // the typing dots via the same path a sent message uses.
+        onTyping: () => startWaitingForReply(new Date().toISOString()),
         // Each time the room is (re)joined, backfill anything missed in the
         // history↔join gap (or while the socket was down).
         onJoined: () => void backfillHistory(),
@@ -355,6 +403,79 @@ export const Bubble = (props: BubbleProps) => {
         if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
       });
     }
+  });
+
+  // Keep isMobile() in sync with the viewport via matchMedia on the SAME query
+  // string the CSS uses, so layout (CSS) and behaviour (JS) can't disagree.
+  // addListener fallback covers older Safari. Runs once (no tracked deps).
+  createEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mql = window.matchMedia(MOBILE_QUERY);
+    const onChange = (e: MediaQueryListEvent): void => {
+      setIsMobile(e.matches);
+    };
+    setIsMobile(mql.matches);
+    if (mql.addEventListener) mql.addEventListener('change', onChange);
+    else mql.addListener(onChange);
+    onCleanup(() => {
+      if (mql.removeEventListener) mql.removeEventListener('change', onChange);
+      else mql.removeListener(onChange);
+    });
+  });
+
+  // The panel stays mounted when "closed" (it's scaled/slid away for the exit
+  // animation), so without this its textarea + buttons would linger in the tab
+  // order and a11y tree. `inert` removes them; CSS visibility:hidden backs it up.
+  createEffect(() => {
+    if (panelEl) panelEl.inert = !isOpen();
+  });
+
+  // Mobile soft-keyboard handling. iOS doesn't reflow a position:fixed element
+  // when the keyboard opens, so we size the sheet to window.visualViewport and
+  // shift it by the viewport's offsetTop — the composer (the flex column's last
+  // child) then rides above the keyboard with no host-scroll hacks. Gated to
+  // open + mobile and fully torn down (listeners + the vars) otherwise, so it
+  // never touches desktop or mutates anything outside our own root.
+  createEffect(() => {
+    if (!isOpen() || !isMobile()) return;
+    const vv = window.visualViewport;
+    if (!vv) return; // absent in some embedded webviews — degrade to 100dvh
+    let rafId = 0;
+    let wantScroll = false;
+    const apply = (): void => {
+      rafId = 0;
+      if (!rootEl) return;
+      rootEl.style.setProperty('--hcw-vvh', `${vv.height}px`);
+      rootEl.style.setProperty('--hcw-vv-offset-top', `${vv.offsetTop}px`);
+      // Keep the latest message visible when the keyboard shows/resizes, but
+      // don't yank the view to the bottom on a mere viewport pan (which would
+      // fight a visitor scrolling back through history with the keyboard up).
+      if (wantScroll && messagesEl) {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+      wantScroll = false;
+    };
+    // Coalesce the resize+scroll bursts the keyboard animation fires into one
+    // write per frame (settles in a single paint, no jitter); OR the
+    // scroll-to-end intent so a resize sharing a frame with a scroll still
+    // pins the latest message above the keyboard.
+    const schedule = (scrollToEnd: boolean): void => {
+      if (scrollToEnd) wantScroll = true;
+      if (!rafId) rafId = window.requestAnimationFrame(apply);
+    };
+    const onResize = (): void => schedule(true);
+    const onScroll = (): void => schedule(false);
+    wantScroll = true;
+    apply(); // initial: pin --hcw-vvh to the real visual-viewport height now
+    vv.addEventListener('resize', onResize, { passive: true });
+    vv.addEventListener('scroll', onScroll, { passive: true });
+    onCleanup(() => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      vv.removeEventListener('resize', onResize);
+      vv.removeEventListener('scroll', onScroll);
+      rootEl?.style.removeProperty('--hcw-vvh');
+      rootEl?.style.removeProperty('--hcw-vv-offset-top');
+    });
   });
 
   onCleanup(() => {
@@ -457,6 +578,9 @@ export const Bubble = (props: BubbleProps) => {
   const closeBubble = (): void => {
     setIsOpen(false);
     setBubbleOpenState(props.businessId, false);
+    // Return focus to the launcher for keyboard users. rAF lets the mobile
+    // launcher un-hide (display:none → flex) before we try to focus it.
+    window.requestAnimationFrame(() => launcherEl?.focus());
   };
 
   const toggle = (): void => {
@@ -487,6 +611,7 @@ export const Bubble = (props: BubbleProps) => {
         visitorId: visitorId(),
         visitorHash: visitorHash(),
         name: props.visitor?.name,
+        dynamicPrompt: props.dynamicPrompt,
         // A tapped button / list row goes up as a WhatsApp-style reply
         // (kind + id + title); a typed message goes up as plain text.
         ...(reply ? { reply } : { text }),
@@ -616,6 +741,7 @@ export const Bubble = (props: BubbleProps) => {
         visitorId: visitorId(),
         visitorHash: visitorHash(),
         name: props.visitor?.name,
+        dynamicPrompt: props.dynamicPrompt,
         // Caption rides with the media (backend stores it as the media caption).
         text: caption || undefined,
         media: {
@@ -661,10 +787,30 @@ export const Bubble = (props: BubbleProps) => {
     <>
       <style>{styles}</style>
       <div
-        class={`hcw-root hcw-${theme().placement} hcw-theme-${mode()}`}
+        ref={el => (rootEl = el)}
+        class={`hcw-root hcw-${theme().placement} hcw-theme-${mode()} ${
+          isOpen() ? 'hcw-open' : ''
+        }`}
         style={rootStyle()}
       >
-        <div class={`hcw-panel ${isOpen() ? '' : 'hcw-closed'}`}>
+        <div
+          ref={el => (panelEl = el)}
+          class={`hcw-panel ${isOpen() ? '' : 'hcw-closed'}`}
+          role='dialog'
+          // Non-modal: the widget never neutralises the host DOM and installs
+          // no focus trap (good-citizen constraint), so claiming aria-modal
+          // would be a false promise to assistive tech even on the mobile sheet.
+          aria-modal='false'
+          aria-labelledby='hcw-dialog-title'
+          onKeyDown={e => {
+            // Esc closes the panel; scoped so it doesn't also trip a host
+            // page's own Escape handler.
+            if (e.key === 'Escape' && isOpen()) {
+              e.stopPropagation();
+              closeBubble();
+            }
+          }}
+        >
           <div class='hcw-header'>
             <div class='hcw-header-avatar'>
               <Show
@@ -675,7 +821,9 @@ export const Bubble = (props: BubbleProps) => {
               </Show>
             </div>
             <div class='hcw-header-text'>
-              <p class='hcw-header-title'>{headerTitle()}</p>
+              <p class='hcw-header-title' id='hcw-dialog-title'>
+                {headerTitle()}
+              </p>
               <Show when={theme().headerSubtitle}>
                 <p class='hcw-header-subtitle'>{theme().headerSubtitle}</p>
               </Show>
@@ -690,7 +838,14 @@ export const Bubble = (props: BubbleProps) => {
             </button>
           </div>
 
-          <div class='hcw-messages' ref={el => (messagesEl = el)}>
+          <div
+            class='hcw-messages'
+            ref={el => (messagesEl = el)}
+            role='log'
+            aria-live={liveReady() ? 'polite' : 'off'}
+            aria-relevant='additions'
+            aria-atomic='false'
+          >
             <Show when={showWelcome()}>
               <p class='hcw-empty'>{theme().welcomeMessage}</p>
             </Show>
@@ -798,24 +953,46 @@ export const Bubble = (props: BubbleProps) => {
         </div>
 
         <button
-          class='hcw-bubble-btn'
+          ref={el => (launcherEl = el)}
+          classList={{
+            'hcw-bubble-btn': true,
+            // launcherHtml takes over the whole button — drop the default
+            // circle / colour / size / shadow so the custom markup IS the
+            // launcher (styled entirely by its own markup + inline <style>).
+            'hcw-bubble-custom': !!theme().launcherHtml,
+          }}
           type='button'
-          aria-label={isOpen() ? 'Close chat' : 'Open chat'}
+          aria-haspopup='dialog'
+          aria-expanded={isOpen() ? 'true' : 'false'}
+          // Stable name + aria-expanded (ARIA disclosure pattern). Avoids two
+          // adjacent controls both named "Close chat" when open on desktop —
+          // the header's close button is the labelled "Close chat".
+          aria-label='Open chat'
           onClick={toggle}
         >
           <Show
-            when={isOpen()}
+            when={theme().launcherHtml}
             fallback={
-              <Show when={theme().launcherIconUrl} fallback={<ChatIcon />}>
-                <img
-                  class='hcw-bubble-icon'
-                  src={theme().launcherIconUrl}
-                  alt=''
-                />
+              <Show
+                when={isOpen()}
+                fallback={
+                  <Show when={theme().launcherIconUrl} fallback={<ChatIcon />}>
+                    <img
+                      class='hcw-bubble-icon'
+                      src={theme().launcherIconUrl}
+                      alt=''
+                    />
+                  </Show>
+                }
+              >
+                <CloseIcon />
               </Show>
             }
           >
-            <CloseIcon />
+            {/* Customer-authored launcher markup (+ optional <style> for CSS),
+                their own content on their own site. Rendered in BOTH open and
+                closed states so an embedded <style> stays applied while open. */}
+            <span class='hcw-bubble-html' innerHTML={theme().launcherHtml} />
           </Show>
         </button>
       </div>

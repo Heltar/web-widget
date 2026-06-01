@@ -28,6 +28,7 @@ export const defaultBubbleProps: BubbleProps = {
   autoShowDelay: undefined,
   isOpen: undefined,
   mode: undefined,
+  dynamicPrompt: undefined,
 };
 
 /** localStorage key prefix — all widget state is scoped under here so we

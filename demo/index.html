@@ -3,7 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <title>HeltarChat Web Widget — demo</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <style>
       body {
         font-family: system-ui, sans-serif;
@@ -68,6 +71,13 @@
       &nbsp;|&nbsp;
       <button type="button" onclick="HeltarChat.setTheme({ primaryColor: '#7c3aed' })">Purple brand</button>
       <button type="button" onclick="HeltarChat.setTheme({ primaryColor: '#008069' })">Green brand</button>
+    </p>
+
+    <h2>Custom colours, launcher HTML/CSS — what the dashboard will drive</h2>
+    <p>
+      <button type="button" onclick="HeltarChat.setTheme({ headerColor: '#1f2937', headerTextColor: '#f9fafb', backgroundColor: '#0f172a', footerColor: '#111827', incomingColor: '#2563eb', incomingTextColor: '#ffffff', outgoingColor: '#1e293b', outgoingTextColor: '#e2e8f0' })">Recolour chat</button>
+      <button type="button" onclick="HeltarChat.setTheme({ launcherHtml: '<style>.hcw-bubble-btn{width:auto;height:48px;padding:0 18px;border-radius:999px}.hcw-bubble-html{gap:8px;font:600 14px system-ui}</style>Chat 💬' })">Pill launcher (HTML+CSS in one field)</button>
+      <button type="button" onclick="HeltarChat.setTheme({ launcherHtml: '', headerColor: '', headerTextColor: '', backgroundColor: '', footerColor: '', incomingColor: '', incomingTextColor: '', outgoingColor: '', outgoingTextColor: '' })">Reset look</button>
     </p>
 
     <script src="../dist/web.js" defer></script>

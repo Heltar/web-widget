@@ -15,6 +15,12 @@ interface ConnectArgs {
   /** Called after the room is successfully (re)joined, so the caller can
    *  backfill anything missed between its history snapshot and the join. */
   onJoined?: () => void;
+  /** Per-visitor dynamic prompt (embedder-set). Sent on join so the backend can
+   *  use it as the AI greeting's opener. */
+  dynamicPrompt?: string;
+  /** Fired when the server signals the bot is typing (e.g. while generating the
+   *  opening greeting) so the caller can show the typing indicator. */
+  onTyping?: () => void;
 }
 
 /**
@@ -33,6 +39,8 @@ export const connectWidgetSocket = ({
   visitorHash,
   onMessage,
   onJoined,
+  dynamicPrompt,
+  onTyping,
 }: ConnectArgs): { socket: Socket; dispose: () => void } => {
   const socket = io(apiHost || undefined, {
     transports: ['websocket', 'polling'],
@@ -59,7 +67,12 @@ export const connectWidgetSocket = ({
     // never joins the room and falls back to history polling forever.
     socket.emit(
       'join_web',
-      { businessId, visitorId, ...(visitorHash && { visitorHash }) },
+      {
+        businessId,
+        visitorId,
+        ...(visitorHash && { visitorHash }),
+        ...(dynamicPrompt && { dynamicPrompt }),
+      },
       (ack?: { ok: boolean; error?: string }) => {
         // Clear any pending retry on every ack so a late success can't leave a
         // stray re-join queued (rapid reconnects would otherwise pile them up).
@@ -96,6 +109,9 @@ export const connectWidgetSocket = ({
     const adapted = adaptInboxPayloadToWidgetMessage(payload);
     if (adapted) onMessage(adapted);
   });
+
+  // Server signals the bot is typing (e.g. generating the opening greeting).
+  socket.on('botTyping', () => onTyping?.());
 
   return {
     socket,

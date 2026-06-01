@@ -62,6 +62,12 @@ export interface BubbleProps {
   mode?: 'light' | 'dark' | 'system';
   /** Auto-open the bubble N ms after page-load. Skip for "click to open". */
   autoShowDelay?: number;
+  /** Extra context appended to the chatbot's system prompt on EVERY AI reply
+   *  for this visitor — a per-visitor dynamic instruction (e.g. "Visitor is on
+   *  the pricing page, premium tier"). Set it from your own app; the widget
+   *  forwards it with each message and the backend injects it at the bottom of
+   *  the system prompt (the same place the visitor's number goes). Plain text. */
+  dynamicPrompt?: string;
   /**
    * Imperative open/close control, set by `window.HeltarChat.open()` /
    * `.close()`. Leave unset (`undefined`) to let the in-widget bubble button
@@ -104,9 +110,43 @@ export interface WidgetTheme {
   /** Launcher (floating bubble button) size. Number → px, or any CSS length.
    *  Default `56px`. */
   launcherSize?: number | string;
+  /** Distance from the bottom edge of the viewport. Number → px, or any CSS
+   *  length. Default `20px`. */
+  offsetBottom?: number | string;
+  /** Distance from the side edge (right when placement is 'right', left when
+   *  'left'). Number → px, or any CSS length. Default `20px`. */
+  offsetSide?: number | string;
+  /** Gap between the bubble and the open panel — the panel always opens
+   *  directly above the bubble. Number → px, or any CSS length. Default `4px`. */
+  panelGap?: number | string;
   /** Custom launcher icon: image URL shown on the bubble button instead of
    *  the default chat glyph (when the panel is closed). Square works best. */
   launcherIconUrl?: string;
+  /** Your custom launcher markup — REPLACES the whole launcher button. When set,
+   *  the default shell (circle, colour, size, shadow) and `launcherIconUrl` no
+   *  longer apply: your markup IS the launcher and styles itself. ONE field for
+   *  the launcher's HTML *and* CSS — include a `<style>…</style>` tag; it lives
+   *  in the widget's Shadow DOM so it stays scoped (and can still reach
+   *  .hcw-panel, the --hcw-* vars …). Empty = the default bubble. Trusted: your
+   *  own content on your own site. */
+  launcherHtml?: string;
+  /** Chat header background. Defaults to primaryColor (also drives the header
+   *  gradient). */
+  headerColor?: string;
+  /** Header text + icon colour (title, subtitle, close button). Default white. */
+  headerTextColor?: string;
+  /** Composer / footer bar background. Defaults to the surface tint. */
+  footerColor?: string;
+  /** Chat message-area (panel body) background. */
+  backgroundColor?: string;
+  /** Right-side bubble background — the visitor's own messages. */
+  incomingColor?: string;
+  /** Right-side bubble text colour. */
+  incomingTextColor?: string;
+  /** Left-side bubble background — your replies / the bot. */
+  outgoingColor?: string;
+  /** Left-side bubble text colour. */
+  outgoingTextColor?: string;
 }
 
 /** WhatsApp-shaped interactive button. The widget only renders `reply`-type
