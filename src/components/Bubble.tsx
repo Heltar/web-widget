@@ -14,11 +14,13 @@ import {
   getBubbleOpenState,
   setBubbleOpenState,
 } from '../storage';
-import { connectWidgetSocket } from '../socket';
+import { connectWidgetSocket, leanContext } from '../socket';
 import { styles } from '../styles';
 import type {
   BubbleProps,
   HistoryResponse,
+  WidgetCarouselCard,
+  WidgetContext,
   WidgetInteractive,
   WidgetMedia,
   WidgetMessage,
@@ -82,6 +84,7 @@ const toWidgetMessage = (
   body: m.body,
   interactive: m.interactive ?? undefined,
   media: m.media,
+  context: leanContext(m.context),
   direction: m.direction,
   status: m.status,
 });
@@ -777,6 +780,42 @@ export const Bubble = (props: BubbleProps) => {
   };
 
   const rows = createMemo(() => buildChatRows(messages()));
+
+  const scrollToMessage = (id: string): void => {
+    if (!messagesEl) return;
+    const el = messagesEl.querySelector(
+      `[data-mid="${id}"]`,
+    ) as HTMLElement | null;
+    const bubble = el?.querySelector('.hcw-msg') as HTMLElement | null;
+    if (!el || !bubble) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Highlight only AFTER the smooth scroll lands the target in view — the
+    // scroll takes a few hundred ms, and flashing during it means the glow is
+    // gone before the eye arrives. IntersectionObserver fires immediately when
+    // the target is already on screen, or when the scroll brings it in; a
+    // timeout backs it up for messages taller than the panel.
+    let started = false;
+    let fallback = 0;
+    let io: IntersectionObserver | undefined;
+    const start = (): void => {
+      if (started) return;
+      started = true;
+      io?.disconnect();
+      window.clearTimeout(fallback);
+      bubble.classList.add('hcw-msg-flash');
+      window.setTimeout(() => bubble.classList.remove('hcw-msg-flash'), 3000);
+    };
+    io = new IntersectionObserver(
+      entries => {
+        if (entries.some(e => e.isIntersecting && e.intersectionRatio >= 0.6)) {
+          start();
+        }
+      },
+      { root: messagesEl, threshold: [0, 0.6, 1] },
+    );
+    io.observe(el);
+    fallback = window.setTimeout(start, 800);
+  };
   const showWelcome = createMemo(
     () =>
       messages().length === 0 &&
@@ -859,6 +898,7 @@ export const Bubble = (props: BubbleProps) => {
                     message={row.message}
                     onReply={reply => void handleReply(row.message.id, reply)}
                     isResponded={respondedTo().has(row.message.id)}
+                    onQuoteClick={scrollToMessage}
                   />
                 )
               }
@@ -1007,30 +1047,73 @@ const MessageBubble = (props: {
   message: WidgetMessage;
   isResponded: boolean;
   onReply: (reply: WidgetReply) => void;
+  onQuoteClick: (id: string) => void;
 }) => {
   const m = () => props.message;
   const isOut = () => m().direction === 'out';
-  // Quick-reply buttons and list rows both render as clickable chips so the
-  // visitor just taps (list row → list_reply, button → button_reply upstream).
   const options = (): WidgetReply[] => replyOptions(m().interactive);
+  const quoted = (): WidgetContext | undefined => m().context ?? undefined;
+  const header = () => m().interactive?.header;
+  const footer = () => m().interactive?.footer?.text;
+  const cta = () =>
+    m().interactive?.type === 'cta_url'
+      ? m().interactive?.action?.parameters
+      : undefined;
+  const carouselCards = (): WidgetCarouselCard[] =>
+    m().interactive?.type === 'carousel' ? (m().interactive?.cards ?? []) : [];
 
   return (
     <div
       class={`hcw-msg-row ${isOut() ? 'hcw-msg-row-out' : 'hcw-msg-row-in'}`}
+      data-mid={m().id}
     >
       <div
         class={`hcw-msg ${isOut() ? 'hcw-msg-out' : 'hcw-msg-in'} ${
           m().pending ? 'hcw-msg-pending' : ''
         }`}
       >
+        <Show when={quoted()}>
+          <QuotedBlock context={quoted()!} onClick={props.onQuoteClick} />
+        </Show>
+        <Show when={header()?.image?.link}>
+          <img
+            class='hcw-interactive-header-img'
+            src={header()!.image!.link}
+            alt=''
+          />
+        </Show>
+        <Show when={header()?.type === 'text' && header()?.text}>
+          <div class='hcw-interactive-header'>{header()!.text}</div>
+        </Show>
         <Show when={m().media}>
           <MediaBlock media={m().media!} />
         </Show>
         <Show when={m().body}>
           <div class='hcw-msg-text'>{m().body}</div>
         </Show>
+        <Show when={footer()}>
+          <div class='hcw-interactive-footer'>{footer()}</div>
+        </Show>
+        <Show when={cta()?.url}>
+          <a
+            class='hcw-cta-btn'
+            href={cta()!.url}
+            target='_blank'
+            rel='noopener noreferrer'
+          >
+            {cta()!.display_text ?? 'Open link'}
+          </a>
+        </Show>
         <span class='hcw-msg-time'>{formatBubbleTime(m().timestamp)}</span>
       </div>
+
+      <Show when={carouselCards().length > 0}>
+        <Carousel
+          cards={carouselCards()}
+          isResponded={props.isResponded}
+          onReply={props.onReply}
+        />
+      </Show>
 
       <Show when={options().length > 0}>
         <div class='hcw-btn-group'>
@@ -1099,3 +1182,93 @@ const MediaBlock = (props: { media: WidgetMedia }) => {
     </a>
   );
 };
+
+const quotePreview = (c: WidgetContext): string => {
+  if (c.body) return c.body;
+  if (c.mediaType) {
+    return c.mediaType === 'image'
+      ? '📷 Photo'
+      : c.mediaType === 'video'
+        ? '🎥 Video'
+        : c.mediaType === 'audio'
+          ? '🎤 Audio'
+          : '📄 Document';
+  }
+  return 'Message';
+};
+
+const QuotedBlock = (props: {
+  context: WidgetContext;
+  onClick: (id: string) => void;
+}) => (
+  <button
+    type='button'
+    class='hcw-quote'
+    onClick={() => props.onClick(props.context.id)}
+  >
+    <span class='hcw-quote-body'>
+      <span class='hcw-quote-author'>
+        {props.context.direction === 'out' ? 'Bot' : 'You'}
+      </span>
+      <span class='hcw-quote-text'>{quotePreview(props.context)}</span>
+    </span>
+    <Show when={props.context.mediaType === 'image' && props.context.mediaUrl}>
+      <img class='hcw-quote-thumb' src={props.context.mediaUrl} alt='' />
+    </Show>
+  </button>
+);
+
+const Carousel = (props: {
+  cards: WidgetCarouselCard[];
+  isResponded: boolean;
+  onReply: (reply: WidgetReply) => void;
+}) => (
+  <div class='hcw-carousel'>
+    <For each={props.cards}>
+      {card => (
+        <div class='hcw-card'>
+          <Show when={card.header?.image?.link}>
+            <img class='hcw-card-img' src={card.header!.image!.link} alt='' />
+          </Show>
+          <Show when={card.body?.text}>
+            <div class='hcw-card-body'>{card.body!.text}</div>
+          </Show>
+          <Show when={(card.buttons?.length ?? 0) > 0}>
+            <div class='hcw-card-btns'>
+              <For each={card.buttons!}>
+                {btn =>
+                  btn.type === 'URL' && btn.url ? (
+                    <a
+                      class='hcw-card-btn hcw-card-link'
+                      href={btn.url}
+                      target='_blank'
+                      rel='noopener noreferrer'
+                    >
+                      {btn.text}
+                    </a>
+                  ) : (
+                    <button
+                      type='button'
+                      class='hcw-card-btn'
+                      disabled={props.isResponded}
+                      onClick={() =>
+                        btn.id &&
+                        props.onReply({
+                          kind: 'button',
+                          id: btn.id,
+                          title: btn.text,
+                        })
+                      }
+                    >
+                      {btn.text}
+                    </button>
+                  )
+                }
+              </For>
+            </div>
+          </Show>
+        </div>
+      )}
+    </For>
+  </div>
+);

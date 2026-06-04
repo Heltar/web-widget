@@ -411,6 +411,29 @@ export const styles = `
 }
 .hcw-msg-pending { opacity: 0.6; }
 
+/* Interactive header (text or media) + footer — distinct weights/sizes so the
+ * header / body / footer read as three tiers, WhatsApp-style. */
+.hcw-interactive-header {
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.3;
+  margin-bottom: 3px;
+}
+.hcw-interactive-header-img {
+  display: block;
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: var(--hcw-radius-sm);
+  margin-bottom: 4px;
+}
+.hcw-interactive-footer {
+  font-size: 11.5px;
+  color: var(--hcw-text-muted);
+  opacity: 0.85;
+  margin-top: 3px;
+}
+
 /* Quick-reply buttons attached under an interactive message */
 .hcw-btn-group {
   display: flex;
@@ -839,5 +862,151 @@ export const styles = `
     outline: 2px solid CanvasText;
     outline-offset: 2px;
   }
+}
+
+/* Carousel (interactive carousel cards) */
+.hcw-carousel {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  max-width: 100%;
+  padding: 2px 2px 6px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.hcw-carousel::-webkit-scrollbar { height: 6px; }
+.hcw-carousel::-webkit-scrollbar-thumb {
+  background: var(--hcw-scroll-thumb);
+  border-radius: 4px;
+}
+.hcw-card {
+  flex: 0 0 auto;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  background: var(--hcw-msg-out-bg);
+  color: var(--hcw-msg-out-text);
+  border: 1px solid var(--hcw-border);
+  border-radius: var(--hcw-radius-md);
+  overflow: hidden;
+  box-shadow: var(--hcw-shadow-1);
+}
+.hcw-card-img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  display: block;
+}
+.hcw-card-body {
+  padding: 8px 10px;
+  font-size: 13.5px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.hcw-card-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-top: 1px solid var(--hcw-border);
+  margin-top: auto;
+}
+.hcw-card-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  background: var(--hcw-reply-btn-bg);
+  color: var(--hcw-primary);
+  border: none;
+  padding: 9px 10px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 140ms var(--hcw-ease-out);
+}
+.hcw-card-btn:hover:not(:disabled) { background: var(--hcw-reply-btn-hover); }
+.hcw-card-btn:disabled { cursor: default; opacity: 0.45; }
+
+/* cta_url single link button */
+.hcw-cta-btn {
+  display: block;
+  text-align: center;
+  margin-top: 6px;
+  padding: 9px 14px;
+  background: var(--hcw-reply-btn-bg);
+  color: var(--hcw-primary);
+  border: 1px solid var(--hcw-border);
+  border-color: color-mix(in srgb, var(--hcw-primary) 35%, var(--hcw-border));
+  border-radius: var(--hcw-radius-sm);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 140ms var(--hcw-ease-out);
+}
+.hcw-cta-btn:hover { background: var(--hcw-reply-btn-hover); }
+
+/* Quoted reply context above a message */
+.hcw-quote {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 5px 8px;
+  border: none;
+  border-left: 3px solid var(--hcw-primary);
+  border-radius: 4px;
+  background: var(--hcw-overlay);
+  color: inherit;
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  max-width: 100%;
+  transition: background 140ms var(--hcw-ease-out);
+}
+.hcw-quote-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+.hcw-quote-thumb {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.hcw-quote:hover { background: var(--hcw-overlay-strong); }
+.hcw-msg-flash {
+  animation: hcw-flash 3s var(--hcw-ease-out);
+}
+@keyframes hcw-flash {
+  0% { box-shadow: var(--hcw-shadow-1); }
+  4% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--hcw-primary) 70%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--hcw-primary) 70%, transparent);
+  }
+  100% { box-shadow: var(--hcw-shadow-1); }
+}
+.hcw-quote-author {
+  font-weight: 600;
+  color: var(--hcw-primary);
+  font-size: 12px;
+}
+.hcw-quote-text {
+  color: var(--hcw-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 `;

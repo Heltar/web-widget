@@ -170,21 +170,47 @@ export interface WidgetListSection {
   rows: WidgetListRow[];
 }
 
-/** Interactive payload shipped to the widget. Mirrors the shape stored in
- *  `interactive_msg.interactive` server-side. We only render the `button`
- *  variant; other shapes (list, carousel, cta_url) are rejected upstream
- *  before they reach the visitor. */
+export interface WidgetCarouselButton {
+  type: 'QUICK_REPLY' | 'URL' | string;
+  text: string;
+  id?: string;
+  url?: string;
+}
+
+export interface WidgetCarouselCard {
+  header?: { type?: string; image?: { link: string }; text?: string };
+  body?: { type?: string; text: string };
+  buttons?: WidgetCarouselButton[];
+}
+
 export interface WidgetInteractive {
-  type: 'button' | 'list' | 'button_reply' | 'list_reply' | string;
+  type:
+    | 'button'
+    | 'list'
+    | 'carousel'
+    | 'cta_url'
+    | 'button_reply'
+    | 'list_reply'
+    | string;
+  /** Optional header above the body — text, or a media link (image/video/
+   *  document) for list / button / cta_url messages. */
+  header?: {
+    type?: string;
+    text?: string;
+    image?: { link: string };
+    video?: { link: string };
+    document?: { link: string };
+  };
   body?: { text: string };
   footer?: { text: string };
   action?: {
-    /** `button` interactive: up to 3 quick-reply buttons. */
     buttons?: WidgetInteractiveButton[];
-    /** `list` interactive: the menu trigger label + grouped, selectable rows. */
     button?: string;
     sections?: WidgetListSection[];
+    name?: string;
+    parameters?: { display_text?: string; url?: string };
   };
+  cards?: WidgetCarouselCard[];
   /** Present on INBOUND reply messages (the visitor tapped a quick-reply
    *  button or picked a list row). Carries the chosen option's id + title —
    *  used to mark the originating interactive as answered across reloads. */
@@ -200,6 +226,40 @@ export interface WidgetMedia {
   caption?: string;
   filename?: string;
   mimeType?: string;
+}
+
+/** Lean snapshot of the message a reply quotes — projected by the backend
+ *  (history + socket) so the widget renders the quoted preview directly,
+ *  without resolving it against its loaded list. */
+export interface WidgetContext {
+  /** wamid of the quoted message — the scroll-to target when tapped. */
+  id: string;
+  /** Quoted message's body / caption, shown as the preview text. */
+  body: string;
+  /** 'in' = the visitor's message, 'out' = bot / agent — drives the label. */
+  direction: 'in' | 'out';
+  /** Media kind when the quoted message was media (for "📷 Photo" previews). */
+  mediaType?: string;
+  /** Media URL (awsLink) of the quoted message — renders an inline thumbnail
+   *  in the quote when it was an image. */
+  mediaUrl?: string;
+}
+
+/** Raw quoted-message fields as they arrive on the wire — the history endpoint
+ *  and the socket `message.context` both carry this shape. The widget derives
+ *  the rendered {@link WidgetContext} from it in ONE place (`leanContext`), so
+ *  `mediaType` / `mediaUrl` / `direction` are computed widget-side, not on the
+ *  server. */
+export interface RawMessageContext {
+  wamid?: string;
+  id?: string;
+  message_id?: string;
+  body?: string;
+  caption?: string;
+  status?: string;
+  type?: string;
+  mimeType?: string;
+  awsLink?: string;
 }
 
 /** Single message as the widget renders it. */
@@ -218,6 +278,9 @@ export interface WidgetMessage {
   /** Media payload — present when the message is an image / video / audio
    *  / document. The widget renders an inline preview / link. */
   media?: WidgetMedia;
+  /** The message this one quotes (a reply), projected by the backend so the
+   *  widget renders the preview directly (no client-side lookup). */
+  context?: WidgetContext | null;
   /** Delivery status, mirrors the WhatsApp send pipeline. */
   status?: string;
   /** Local optimistic messages are flagged so we can swap the wamid when
@@ -234,6 +297,7 @@ export interface HistoryResponse {
     body: string;
     interactive?: WidgetInteractive | null;
     media?: WidgetMedia;
+    context?: RawMessageContext | null;
     direction: 'in' | 'out';
     status?: string;
   }>;

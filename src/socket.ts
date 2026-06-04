@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 
-import type { WidgetMedia, WidgetMessage } from './types';
+import type { WidgetContext, WidgetMedia, WidgetMessage } from './types';
 
 interface ConnectArgs {
   apiHost: string;
@@ -133,6 +133,36 @@ export const connectWidgetSocket = ({
  * For widget rendering we only need the message, projected into the lean
  * `WidgetMessage` shape that the components consume.
  */
+/** Derive the rendered quoted-context from the raw fields carried by BOTH the
+ *  history endpoint and the socket `message.context`. The single derivation
+ *  site for `mediaType` / `mediaUrl` / `direction` (history + realtime). */
+export const leanContext = (ctx: unknown): WidgetContext | null => {
+  if (!ctx || typeof ctx !== 'object') return null;
+  const c = ctx as {
+    wamid?: string;
+    id?: string;
+    message_id?: string;
+    body?: string;
+    caption?: string;
+    status?: string;
+    type?: string;
+    mimeType?: string;
+    awsLink?: string;
+  };
+  const id = c.wamid ?? c.id ?? c.message_id;
+  if (!id) return null;
+  const isMedia = c.type === 'media';
+  return {
+    id,
+    body: (isMedia ? c.caption : c.body) ?? '',
+    direction: c.status === 'received' ? 'in' : 'out',
+    ...(isMedia && c.mimeType
+      ? { mediaType: mediaKindFromMime(c.mimeType) }
+      : {}),
+    ...(isMedia && c.awsLink ? { mediaUrl: c.awsLink } : {}),
+  };
+};
+
 const adaptInboxPayloadToWidgetMessage = (
   payload: unknown,
 ): WidgetMessage | null => {
@@ -151,6 +181,7 @@ const adaptInboxPayloadToWidgetMessage = (
       filename?: string;
       name?: string;
       mimeType?: string;
+      context?: unknown;
     };
   };
   const m = p.message;
@@ -176,6 +207,7 @@ const adaptInboxPayloadToWidgetMessage = (
         ? ((m.interactive as WidgetMessage['interactive']) ?? null)
         : undefined,
     media: extractMedia(m),
+    context: leanContext(m.context),
     status: m.status,
   };
 };
