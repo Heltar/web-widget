@@ -322,6 +322,7 @@ export const Bubble = (props: BubbleProps) => {
         businessId: props.businessId,
         visitorId: visitorId(),
         visitorHash: visitorHash(),
+        name: props.visitor?.name,
         // Forwarded on join so the backend can use it as the AI greeting opener.
         dynamicPrompt: props.dynamicPrompt,
         // Server says the bot is typing (e.g. generating the greeting) — show

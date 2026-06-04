@@ -10,6 +10,7 @@ interface ConnectArgs {
    *  with the join_web payload; required server-side only for non-anonymous
    *  ids once the business enables verification. */
   visitorHash?: string;
+  name?: string;
   /** Called every time the server emits a message to this visitor's room. */
   onMessage: (msg: WidgetMessage) => void;
   /** Called after the room is successfully (re)joined, so the caller can
@@ -37,6 +38,7 @@ export const connectWidgetSocket = ({
   businessId,
   visitorId,
   visitorHash,
+  name,
   onMessage,
   onJoined,
   dynamicPrompt,
@@ -71,6 +73,7 @@ export const connectWidgetSocket = ({
         businessId,
         visitorId,
         ...(visitorHash && { visitorHash }),
+        ...(name && { name }),
         ...(dynamicPrompt && { dynamicPrompt }),
       },
       (ack?: { ok: boolean; error?: string }) => {
