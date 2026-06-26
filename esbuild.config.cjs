@@ -8,76 +8,62 @@ const { version } = require('./package.json');
 const watch = process.argv.includes('--watch');
 const banner = { js: `/* @heltarchat/web-widget v${version} */` };
 
-// In watch (dev) mode, mirror the freshly built IIFE into the dashboard's
+// In watch (dev) mode, mirror the freshly built bundle into the dashboard's
 // public dir after every rebuild so `pnpm dev` always serves a current
 // /web-widget.js. The production build copies it via the frontend
 // `widget:bundle` script instead, so this only runs while watching.
-const FRONTEND_PUBLIC = path.resolve(
-  __dirname,
-  '../../frontend/public/web-widget.js',
-);
-const mirrorToFrontend = {
-  name: 'mirror-to-frontend-public',
+const mirror = (distFile, publicName) => ({
+  name: `mirror-${publicName}`,
   setup(build) {
     build.onEnd(result => {
       if (result.errors.length) return;
       try {
         fs.copyFileSync(
-          path.resolve(__dirname, 'dist/web.js'),
-          FRONTEND_PUBLIC,
+          path.resolve(__dirname, distFile),
+          path.resolve(__dirname, '../../frontend/public', publicName),
         );
-        console.log('[web-widget] → frontend/public/web-widget.js');
+        console.log(`[web-widget] → frontend/public/${publicName}`);
       } catch (err) {
-        console.error('[web-widget] mirror failed:', err.message);
+        console.error(`[web-widget] mirror ${publicName} failed:`, err.message);
       }
     });
   },
-};
+});
 
 /**
- * Single output: `dist/web.js` — a self-contained IIFE that injects
- * `window.HeltarChat` and registers `<heltar-chat-bubble>`. It's copied to the
- * dashboard's `public/web-widget.js` and loaded via
- * `<script src="…/web-widget.js">`. The widget is consumed only this way
- * (script tag / custom element) — it is NOT published to npm.
+ * A self-contained IIFE served from the dashboard origin and loaded via
+ * <script src="…/web-widget.js"> — the visitor chat bubble (Solid). Not
+ * published to npm. (The agent embed loader lives in the sibling
+ * `public/embed-chat` package.)
  */
 
-const common = {
+const browserBuild = {
   bundle: true,
   minify: !watch,
   sourcemap: watch ? 'inline' : 'linked',
   target: ['es2020'],
   platform: 'browser',
-  banner,
-  plugins: [solidPlugin()],
-  // Inline CSS lives in src/styles.ts as a JS string — no external CSS
-  // bundling needed, so postcss / tailwind toolchains are skipped.
-  loader: {
-    '.svg': 'text',
-  },
   logLevel: 'info',
-};
-
-const browserBuild = {
-  ...common,
+  banner,
   entryPoints: { web: 'src/web.ts' },
   outdir: 'dist',
   format: 'iife',
   globalName: '__heltarchatWidget',
-  // Footer pops the registered module onto window for the script-tag use case
-  // (Typebot does the same via injectTypebotInWindow but inside the bundle).
-  plugins: watch ? [...common.plugins, mirrorToFrontend] : common.plugins,
+  loader: { '.svg': 'text' },
+  plugins: watch
+    ? [solidPlugin(), mirror('dist/web.js', 'web-widget.js')]
+    : [solidPlugin()],
 };
 
 async function run() {
   if (watch) {
-    const ctx = await esbuild.context(browserBuild);
-    await ctx.watch();
+    const webCtx = await esbuild.context(browserBuild);
+    await webCtx.watch();
     console.log('[web-widget] watching for changes…');
     return;
   }
   await esbuild.build(browserBuild);
-  console.log('[web-widget] build complete →', 'dist/web.js');
+  console.log('[web-widget] build complete → dist/web.js');
 }
 
 run().catch(err => {
