@@ -55,15 +55,28 @@ const browserBuild = {
     : [solidPlugin()],
 };
 
+// livekit-client lives only here; callLoader.ts injects it on the first call.
+const callBuild = {
+  ...browserBuild,
+  entryPoints: { call: 'src/call.ts' },
+  globalName: undefined,
+  plugins: watch
+    ? [solidPlugin(), mirror('dist/call.js', 'web-widget-call.js')]
+    : [solidPlugin()],
+};
+
 async function run() {
   if (watch) {
     const webCtx = await esbuild.context(browserBuild);
+    const callCtx = await esbuild.context(callBuild);
     await webCtx.watch();
+    await callCtx.watch();
     console.log('[web-widget] watching for changes…');
     return;
   }
   await esbuild.build(browserBuild);
-  console.log('[web-widget] build complete → dist/web.js');
+  await esbuild.build(callBuild);
+  console.log('[web-widget] build complete → dist/web.js + dist/call.js');
 }
 
 run().catch(err => {

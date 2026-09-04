@@ -131,6 +131,45 @@ export const markRead = async ({
   }
 };
 
+/** The server's own visitor-facing refusal (rate caps…) — shown as-is. */
+export class WidgetCallError extends Error {}
+
+/** Create the room server-side; returns the join token. */
+export const startWidgetCall = async ({
+  apiHost,
+  businessId,
+  visitorId,
+  visitorHash,
+}: VisitorArgs): Promise<{
+  roomName: string;
+  token: string;
+  voiceUrl: string;
+}> => {
+  const res = await fetch(
+    `${apiHost}/v1/webhooks/web/${businessId}/${visitorId}/call`,
+    {
+      method: 'POST',
+      headers: visitorHash
+        ? { 'X-Heltar-Widget-Hash': visitorHash }
+        : undefined,
+      credentials: 'omit',
+    },
+  );
+  if (!res.ok) {
+    // Error body is { errorType, errorMessage }.
+    const body = (await res.json().catch(() => null)) as {
+      errorMessage?: string;
+    } | null;
+    throw body?.errorMessage
+      ? new WidgetCallError(body.errorMessage)
+      : new Error(`call start failed: ${res.status}`);
+  }
+  const json = (await res.json()) as {
+    data: { roomName: string; token: string; voiceUrl: string };
+  };
+  return json.data;
+};
+
 interface UploadArgs extends VisitorArgs {
   file: File;
 }

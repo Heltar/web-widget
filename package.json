@@ -16,6 +16,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "livekit-client": "^2.19.2",
     "socket.io-client": "^4.8.3",
     "solid-element": "^1.9.1",
     "solid-js": "^1.9.9"

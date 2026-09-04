@@ -29,6 +29,7 @@ export const defaultBubbleProps: BubbleProps = {
   isOpen: undefined,
   mode: undefined,
   dynamicPrompt: undefined,
+  enableCall: undefined,
 };
 
 /** localStorage key prefix — all widget state is scoped under here so we

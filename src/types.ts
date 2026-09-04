@@ -68,6 +68,10 @@ export interface BubbleProps {
    *  forwards it with each message and the backend injects it at the bottom of
    *  the system prompt (the same place the visitor's number goes). Plain text. */
   dynamicPrompt?: string;
+  /** Voice-call button in the header — shown only once the server confirms a
+   *  call can be placed (voice bot answers, else the inbox rings). Off by
+   *  default. */
+  enableCall?: boolean;
   /**
    * Imperative open/close control, set by `window.HeltarChat.open()` /
    * `.close()`. Leave unset (`undefined`) to let the in-widget bubble button
@@ -211,6 +215,12 @@ export interface WidgetInteractive {
     parameters?: { display_text?: string; url?: string };
   };
   cards?: WidgetCarouselCard[];
+  /** Call rows (`type: 'call'`) carry the outcome only: who placed it, the
+   *  seconds on the line (null until answered / when nobody picked up) and
+   *  whether it has ended. */
+  direction?: 'USER_INITIATED' | 'BUSINESS_INITIATED';
+  duration?: number | null;
+  ended?: boolean;
   /** Present on INBOUND reply messages (the visitor tapped a quick-reply
    *  button or picked a list row). Carries the chosen option's id + title —
    *  used to mark the originating interactive as answered across reloads. */
@@ -290,6 +300,8 @@ export interface WidgetMessage {
 
 /** Response shape of GET /v1/webhooks/web/:bizId/:visitorId/history. */
 export interface HistoryResponse {
+  /** Whether this visitor could place a voice call right now. */
+  callEnabled?: boolean;
   messages: Array<{
     id: string;
     timestamp: string;

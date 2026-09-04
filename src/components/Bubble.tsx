@@ -8,7 +8,15 @@ import {
 } from 'solid-js';
 
 import { defaultTheme } from '../constants';
-import { loadHistory, markRead, sendMessage, uploadFile } from '../api';
+import {
+  WidgetCallError,
+  loadHistory,
+  markRead,
+  sendMessage,
+  startWidgetCall,
+  uploadFile,
+} from '../api';
+import { loadCallRuntime, type WidgetCallSession } from '../callLoader';
 import {
   ensureVisitorId,
   getBubbleOpenState,
@@ -57,11 +65,25 @@ const replyOptions = (it?: WidgetInteractive | null): WidgetReply[] => {
  *  message that isn't a reply. */
 const replyIdOf = (it?: WidgetInteractive | null): string | undefined =>
   it?.button_reply?.id ?? it?.list_reply?.id;
-import { AttachIcon, ChatIcon, CloseIcon, SendIcon } from './icons';
+import {
+  AttachIcon,
+  ChatIcon,
+  CloseIcon,
+  EndCallIcon,
+  MicIcon,
+  MicOffIcon,
+  PhoneIcon,
+  SendIcon,
+} from './icons';
+import { describeCall, formatCallDuration } from './callRow';
 import { buildChatRows, formatBubbleTime } from './dayGrouping';
 
 const localId = (): string =>
   `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+/** Ring time before the widget gives up — same as the dashboard's dial timeout. */
+const CALL_NO_ANSWER_MS = 60_000;
+const NO_ANSWER_MSG = 'No one is available right now — please leave a message.';
 
 /** Normalise a size theme value to a CSS length: a bare number → px, any
  *  string passes through (`'32rem'`, `'90vw'`). Undefined → undefined so the
@@ -178,6 +200,13 @@ export const Bubble = (props: BubbleProps) => {
     previewUrl: string;
     kind: WidgetMedia['type'];
   } | null>(null);
+  /** Server says a call can be placed (from history); ANDed with props.enableCall. */
+  const [callEnabled, setCallEnabled] = createSignal<boolean>(false);
+  const [callStatus, setCallStatus] = createSignal<
+    'idle' | 'connecting' | 'active'
+  >('idle');
+  const [callSeconds, setCallSeconds] = createSignal<number>(0);
+  const [callMuted, setCallMuted] = createSignal<boolean>(false);
 
   let messagesEl: HTMLDivElement | undefined;
   let rootEl: HTMLDivElement | undefined;
@@ -190,6 +219,11 @@ export const Bubble = (props: BubbleProps) => {
   let replyPollHandle: number | undefined;
   let replyTimeoutHandle: number | undefined;
   let errorTimeoutHandle: number | undefined;
+  let callSession: WidgetCallSession | undefined;
+  let callTimerHandle: number | undefined;
+  let callRingHandle: number | undefined;
+  // Bumped per start and per local hangup; async steps/callbacks bail on mismatch.
+  let callGeneration = 0;
   /** Outbound message ids already reported as read, so we don't re-POST. */
   const readSent = new Set<string>();
 
@@ -294,6 +328,7 @@ export const Bubble = (props: BubbleProps) => {
         limit: 50,
       });
       setMessages(hist.messages.map(toWidgetMessage));
+      setCallEnabled(!!hist.callEnabled);
       // WhatsApp-style: an interactive whose buttons the visitor already
       // answered stays disabled across reloads. Derive it from history — an
       // interactive is "responded" if a LATER inbound reply message carries
@@ -485,6 +520,7 @@ export const Bubble = (props: BubbleProps) => {
   onCleanup(() => {
     disposeSocket?.();
     stopWaitingForReply();
+    endVoiceCall();
     if (errorTimeoutHandle) window.clearTimeout(errorTimeoutHandle);
     // Revoke any blob: URLs that survive — typically failed-upload optimistic
     // rows the dedup logic never replaced.
@@ -563,6 +599,102 @@ export const Bubble = (props: BubbleProps) => {
     }, 30000);
   };
 
+  const clearCallTimers = (): void => {
+    window.clearInterval(callTimerHandle);
+    window.clearTimeout(callRingHandle);
+    callTimerHandle = callRingHandle = undefined;
+  };
+
+  const onCallEnded = (): void => {
+    callSession = undefined;
+    clearCallTimers();
+    setCallStatus('idle');
+    setCallMuted(false);
+    setCallSeconds(0);
+  };
+
+  const startVoiceCall = async (): Promise<void> => {
+    if (callStatus() !== 'idle' || !props.businessId || !visitorId()) return;
+    const gen = ++callGeneration;
+    setCallStatus('connecting');
+    try {
+      const [{ voiceUrl, token }, runtime] = await Promise.all([
+        startWidgetCall({
+          apiHost: apiHost(),
+          businessId: props.businessId,
+          visitorId: visitorId(),
+          visitorHash: visitorHash(),
+        }),
+        loadCallRuntime(),
+      ]);
+      if (gen !== callGeneration) return;
+      const session = await runtime.start({
+        voiceUrl,
+        token,
+        onAnswered: () => {
+          if (gen !== callGeneration || callStatus() !== 'connecting') return;
+          clearCallTimers();
+          setCallStatus('active');
+          callTimerHandle = window.setInterval(
+            () => setCallSeconds(s => s + 1),
+            1000,
+          );
+        },
+        onEnded: () => {
+          if (gen !== callGeneration) return;
+          // Still ringing → nobody picked up (the ring timer is only armed once
+          // `start()` resolves, so it can't be the signal here).
+          const unanswered = callStatus() === 'connecting';
+          // Terminal, so a `start()` settling later can't double-report or leak.
+          callGeneration++;
+          onCallEnded();
+          if (unanswered) showError(NO_ANSWER_MSG);
+        },
+      });
+      if (gen !== callGeneration) {
+        void session.end();
+        return;
+      }
+      callSession = session;
+      // onAnswered may already have fired inside start() (bot was in the room).
+      if (callStatus() === 'connecting') {
+        callRingHandle = window.setTimeout(() => {
+          if (gen !== callGeneration || callStatus() !== 'connecting') return;
+          endVoiceCall();
+          showError(NO_ANSWER_MSG);
+        }, CALL_NO_ANSWER_MS);
+      }
+    } catch (err) {
+      if (gen !== callGeneration) return;
+      onCallEnded();
+      showError(
+        err instanceof DOMException && err.name === 'NotAllowedError'
+          ? 'Allow microphone access to start a call.'
+          : err instanceof WidgetCallError
+            ? err.message
+            : `Couldn't start the call. Please try again.`,
+      );
+    }
+  };
+
+  const endVoiceCall = (): void => {
+    callGeneration++;
+    void callSession?.end();
+    onCallEnded();
+  };
+
+  const toggleCallMute = async (): Promise<void> => {
+    const session = callSession;
+    if (!session) return;
+    const next = !callMuted();
+    setCallMuted(next);
+    try {
+      await session.mute(next);
+    } catch {
+      setCallMuted(!next);
+    }
+  };
+
   const openBubble = async (): Promise<void> => {
     setIsOpen(true);
     setBubbleOpenState(props.businessId, true);
@@ -580,6 +712,8 @@ export const Bubble = (props: BubbleProps) => {
   );
 
   const closeBubble = (): void => {
+    // Call controls live in the panel — never leave a hot mic behind a closed one.
+    if (callStatus() !== 'idle') endVoiceCall();
     setIsOpen(false);
     setBubbleOpenState(props.businessId, false);
     // Return focus to the launcher for keyboard users. rAF lets the mobile
@@ -868,6 +1002,20 @@ export const Bubble = (props: BubbleProps) => {
                 <p class='hcw-header-subtitle'>{theme().headerSubtitle}</p>
               </Show>
             </div>
+            <Show
+              when={
+                props.enableCall && callEnabled() && callStatus() === 'idle'
+              }
+            >
+              <button
+                class='hcw-header-call'
+                type='button'
+                aria-label='Start voice call'
+                onClick={() => void startVoiceCall()}
+              >
+                <PhoneIcon />
+              </button>
+            </Show>
             <button
               class='hcw-header-close'
               type='button'
@@ -877,6 +1025,45 @@ export const Bubble = (props: BubbleProps) => {
               <CloseIcon />
             </button>
           </div>
+
+          <Show when={callStatus() !== 'idle'}>
+            <div class='hcw-callbar'>
+              {/* Live region announces transitions only — the ticking timer
+                  below would otherwise be read out every second. */}
+              <span class='hcw-sr-only' role='status'>
+                {callStatus() === 'connecting'
+                  ? 'Calling…'
+                  : 'Voice call connected'}
+              </span>
+              <span class='hcw-callbar-pulse' aria-hidden='true' />
+              <span class='hcw-callbar-label' aria-hidden='true'>
+                {callStatus() === 'connecting'
+                  ? 'Calling…'
+                  : `Voice call · ${formatCallDuration(callSeconds(), true)}`}
+              </span>
+              <Show when={callStatus() === 'active'}>
+                <button
+                  class='hcw-callbar-btn'
+                  type='button'
+                  aria-label={
+                    callMuted() ? 'Unmute microphone' : 'Mute microphone'
+                  }
+                  aria-pressed={callMuted() ? 'true' : 'false'}
+                  onClick={() => void toggleCallMute()}
+                >
+                  {callMuted() ? <MicOffIcon /> : <MicIcon />}
+                </button>
+              </Show>
+              <button
+                class='hcw-callbar-btn hcw-callbar-end'
+                type='button'
+                aria-label='End call'
+                onClick={endVoiceCall}
+              >
+                <EndCallIcon />
+              </button>
+            </div>
+          </Show>
 
           <div
             class='hcw-messages'
@@ -1061,6 +1248,8 @@ const MessageBubble = (props: {
       : undefined;
   const carouselCards = (): WidgetCarouselCard[] =>
     m().interactive?.type === 'carousel' ? (m().interactive?.cards ?? []) : [];
+  const call = () =>
+    m().interactive?.type === 'call' ? describeCall(m().interactive!) : null;
 
   return (
     <div
@@ -1088,7 +1277,18 @@ const MessageBubble = (props: {
         <Show when={m().media}>
           <MediaBlock media={m().media!} />
         </Show>
-        <Show when={m().body}>
+        <Show when={call()}>
+          <div class={`hcw-call ${call()!.missed ? 'hcw-call-missed' : ''}`}>
+            <span class='hcw-call-icon'>
+              <PhoneIcon />
+            </span>
+            <span class='hcw-call-text'>
+              <span class='hcw-call-title'>Voice call</span>
+              <span class='hcw-call-detail'>{call()!.detail}</span>
+            </span>
+          </div>
+        </Show>
+        <Show when={m().body && !call()}>
           <div class='hcw-msg-text'>{m().body}</div>
         </Show>
         <Show when={footer()}>

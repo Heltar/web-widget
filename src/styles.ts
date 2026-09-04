@@ -308,7 +308,8 @@ export const styles = `
   opacity: 0.85;
   margin: 2px 0 0 0;
 }
-.hcw-header-close {
+.hcw-header-close,
+.hcw-header-call {
   background: none;
   border: none;
   color: var(--hcw-header-text, var(--hcw-on-primary));
@@ -323,9 +324,78 @@ export const styles = `
   opacity: 0.9;
   transition: background 140ms var(--hcw-ease-out), opacity 140ms var(--hcw-ease-out);
 }
-.hcw-header-close:hover { opacity: 1; background: rgba(255, 255, 255, 0.16); }
-.hcw-header-close:active { background: rgba(255, 255, 255, 0.24); }
+.hcw-header-close:hover, .hcw-header-call:hover { opacity: 1; background: rgba(255, 255, 255, 0.16); }
+.hcw-header-close:active, .hcw-header-call:active { background: rgba(255, 255, 255, 0.24); }
 .hcw-header-close svg { width: 20px; height: 20px; }
+.hcw-header-call svg { width: 18px; height: 18px; }
+
+.hcw-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.hcw-callbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--hcw-surface-2);
+  border-bottom: 1px solid var(--hcw-border);
+  position: relative;
+  z-index: 1;
+}
+.hcw-callbar-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+  animation: hcw-call-pulse 1.4s ease-in-out infinite;
+}
+@keyframes hcw-call-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.45); }
+  50% { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0); }
+}
+.hcw-callbar-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hcw-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.hcw-callbar-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--hcw-border);
+  background: var(--hcw-surface);
+  color: var(--hcw-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background 140ms var(--hcw-ease-out);
+}
+.hcw-callbar-btn:hover { background: var(--hcw-overlay); }
+.hcw-callbar-btn svg { width: 16px; height: 16px; }
+.hcw-callbar-end {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
+}
+.hcw-callbar-end:hover { background: #dc2626; }
 
 .hcw-messages {
   flex: 1;
@@ -410,6 +480,35 @@ export const styles = `
   user-select: none;
 }
 .hcw-msg-pending { opacity: 0.6; }
+
+/* Call entries — the outcome under a phone glyph, like a WhatsApp call row. */
+.hcw-call {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 150px;
+  padding: 2px 0;
+}
+.hcw-call-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--hcw-surface-2);
+  background: color-mix(in srgb, var(--hcw-primary) 14%, transparent);
+  color: var(--hcw-primary);
+}
+.hcw-call-icon svg { width: 18px; height: 18px; }
+.hcw-call-text { display: flex; flex-direction: column; line-height: 1.25; }
+.hcw-call-title { font-weight: 600; font-size: 14px; }
+.hcw-call-detail { font-size: 12px; color: var(--hcw-text-muted); }
+.hcw-call-missed .hcw-call-icon {
+  background: rgba(211, 47, 47, 0.14);
+  color: #d32f2f;
+}
 
 /* Interactive header (text or media) + footer — distinct weights/sizes so the
  * header / body / footer read as three tiers, WhatsApp-style. */
@@ -727,7 +826,7 @@ export const styles = `
    desktops stay compact and touch laptops benefit. */
 @media (pointer: coarse) {
   .hcw-attach, .hcw-send { width: 44px; height: 44px; }
-  .hcw-header-close { width: 44px; height: 44px; }
+  .hcw-header-close, .hcw-header-call { width: 44px; height: 44px; }
   .hcw-staged-cancel { width: 44px; height: 44px; }
 }
 
@@ -843,6 +942,7 @@ export const styles = `
     transition-duration: 0.01ms !important;
   }
   .hcw-dot { animation: none !important; opacity: 0.6 !important; }
+  .hcw-callbar-pulse { animation: none !important; }
   .hcw-messages { scroll-behavior: auto !important; }
   .hcw-panel { transition: opacity 0.01ms !important; }
   .hcw-panel.hcw-closed { transform: none !important; opacity: 0; visibility: hidden; }
@@ -856,6 +956,7 @@ export const styles = `
   .hcw-bubble-btn:focus-visible,
   .hcw-text-input:focus-visible,
   .hcw-header-close:focus-visible,
+  .hcw-header-call:focus-visible,
   .hcw-send:focus-visible,
   .hcw-attach:focus-visible,
   .hcw-reply-btn:focus-visible {

@@ -83,10 +83,14 @@ The widget normally loads from your Heltar dashboard at `/web-widget.js`. If you
 git clone https://github.com/Heltar/web-widget.git
 cd web-widget
 npm install
-npm run build      # → dist/web.js  (a self-contained IIFE)
+npm run build      # → dist/web.js + dist/call.js  (self-contained IIFEs)
 ```
 
-Then host `dist/web.js` wherever you like and load it on your page:
+Then host `dist/web.js` wherever you like and load it on your page. If your
+business uses **Voice calls**, also host `dist/call.js` in the same directory
+(named `web-widget-call.js` when your main file is `web-widget.js`, `call.js`
+next to a `web.js`, or `web-widget-call.js` beside any other filename) — the
+widget lazy-loads it from beside its own script when a visitor starts a call:
 
 ```html
 <script src="https://your-cdn.example/web.js" defer></script>
@@ -104,7 +108,7 @@ Self-hosting only changes **where the script is served from** — it does not ch
 - `apiHost` must still point at the **Heltar API** — that's where the widget's REST + Socket.io calls go (not your CDN).
 - The **origin allowlist still applies**: the origin of the _page the widget runs on_ must be added under **Settings → Web Chat Widget**, no matter where you host the bundle from.
 
-There's nothing to publish or version — `dist/web.js` is the whole product. Re-run `npm run build` to pick up a new release of this repo.
+There's nothing to publish or version — `dist/web.js` (plus `dist/call.js` for voice calls) is the whole product. Re-run `npm run build` to pick up a new release of this repo.
 
 ## Development
 
@@ -130,6 +134,7 @@ npm run type-check
 | `mode`                    | `'light' \| 'dark' \| 'system'` | optional | Colour scheme — reflected attribute, settable live via `setMode`. `system` follows the OS. Default `'light'`                                                                          |
 | `autoShowDelay`           | `number (ms)`                   | optional | Auto-open the bubble N ms after page-load                                                                                                                                             |
 | `dynamicPrompt`           | `string`                        | optional | Per-visitor context appended to your chatbot's system prompt on every AI reply. Set from your app; framed as background info, not overriding instructions                             |
+| `enableCall`              | `boolean`                       | optional | Voice-call button in the chat header — a browser call answered by the business's AI voice bot if one is published, otherwise ringing its inbox agents. Default `false`                |
 | `visitor.id`              | `string`                        | optional | Identify the visitor from your own auth (phone, user id) — same conversation across their devices                                                                                     |
 | `visitor.name`            | `string`                        | optional | Display name shown to agents in the inbox                                                                                                                                             |
 | `theme.primaryColor`      | `string`                        | optional | Brand colour (bubble, header, send + reply buttons). Default `#008069`                                                                                                                |

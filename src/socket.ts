@@ -200,7 +200,14 @@ const adaptInboxPayloadToWidgetMessage = (
     // UI), never echoed back to the widget — so `direction` is always 'out'
     // here. The widget renders the visitor's own messages from its local
     // optimistic state, not from this socket.
-    direction: 'out',
+    // …except a call row: the visitor's own call (status 'received') sits on
+    // their side, exactly as history places it.
+    direction:
+      m.type === 'interactive' &&
+      (m.interactive as { type?: string } | undefined)?.type === 'call' &&
+      m.status === 'received'
+        ? 'in'
+        : 'out',
     body: m.body ?? '',
     interactive:
       m.type === 'interactive'
