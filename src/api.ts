@@ -68,6 +68,8 @@ interface SendArgs extends VisitorArgs {
   /** Per-visitor context the embedder set; forwarded so the backend can append
    *  it to the chatbot's system prompt on this reply. */
   dynamicPrompt?: string;
+  /** Wait before the single retry of a 429 (the backend's per-second cap). */
+  retryDelayMs?: number;
 }
 
 export const sendMessage = async ({
@@ -80,6 +82,7 @@ export const sendMessage = async ({
   media,
   reply,
   dynamicPrompt,
+  retryDelayMs = 1100,
 }: SendArgs): Promise<void> => {
   const body: Record<string, unknown> = { visitorId };
   if (text) body.text = text;
@@ -87,15 +90,23 @@ export const sendMessage = async ({
   if (media) body.media = media;
   if (reply) body.reply = reply;
   if (dynamicPrompt) body.dynamicPrompt = dynamicPrompt;
-  const res = await fetch(`${apiHost}/v1/webhooks/web/${businessId}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(visitorHash && { 'X-Heltar-Widget-Hash': visitorHash }),
-    },
-    body: JSON.stringify(body),
-    credentials: 'omit',
-  });
+  const post = () =>
+    fetch(`${apiHost}/v1/webhooks/web/${businessId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(visitorHash && { 'X-Heltar-Widget-Hash': visitorHash }),
+      },
+      body: JSON.stringify(body),
+      credentials: 'omit',
+    });
+  let res = await post();
+  // The per-business cap is a one-second window, so a 429 clears by itself;
+  // one retry keeps a burst from ever surfacing as a failed message.
+  if (res.status === 429) {
+    await new Promise(r => setTimeout(r, retryDelayMs));
+    res = await post();
+  }
   if (!res.ok) {
     throw new Error(`send failed: ${res.status}`);
   }
